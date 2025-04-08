@@ -247,12 +247,9 @@ class Browser:
 		"""Sets up and returns a Playwright Browser instance with anti-detection measures."""
 		assert self.config.browser_binary_path is None, 'browser_binary_path should be None if trying to use the builtin browsers'
 
-		if self.config.headless:
-			screen_size = {'width': 1920, 'height': 1080}
-			offset_x, offset_y = 0, 0
-		else:
-			screen_size = get_screen_resolution()
-			offset_x, offset_y = get_window_adjustments()
+		# Extract window position and size from extra_browser_args if present
+		window_args = {arg.split('=')[0]: arg for arg in self.config.extra_browser_args 
+					  if arg.startswith('--window-position=') or arg.startswith('--window-size=')}
 
 		chrome_args = {
 			*CHROME_ARGS,
@@ -260,10 +257,18 @@ class Browser:
 			*(CHROME_HEADLESS_ARGS if self.config.headless else []),
 			*(CHROME_DISABLE_SECURITY_ARGS if self.config.disable_security else []),
 			*(CHROME_DETERMINISTIC_RENDERING_ARGS if self.config.deterministic_rendering else []),
-			f'--window-position={offset_x},{offset_y}',
-			f'--window-size={screen_size["width"]},{screen_size["height"]}',
-			*self.config.extra_browser_args,
 		}
+
+		# Remove any existing window position/size args
+		chrome_args = {arg for arg in chrome_args 
+					  if not arg.startswith('--window-position=') 
+					  and not arg.startswith('--window-size=')}
+
+		# Add window args from extra_browser_args
+		chrome_args.update(window_args.values())
+
+		# Add remaining extra browser args
+		chrome_args.update(arg for arg in self.config.extra_browser_args if arg not in window_args)
 
 		# check if port 9222 is already taken, if so remove the remote-debugging-port arg to prevent conflicts
 		with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
